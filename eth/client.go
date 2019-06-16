@@ -158,7 +158,7 @@ func (c *contractClient) counterReqData() (*bind.TransactOpts, error) {
 	data.Nonce = big.NewInt(int64(nonce))
 	data.Value = big.NewInt(0) // in wei
 	data.GasLimit = GasLimit   // in units
-	data.GasPrice = gasPrice.Add(gasPrice, gasPrice)
+	data.GasPrice = gasPrice
 
 	return data, nil
 }

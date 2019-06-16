@@ -147,7 +147,7 @@ make run
 
 #### Launch
 
-Поменять SERVER_URL, если нужно.
+Поменять SERVER_URL (index.js), если нужно.
 
 ```bash
 cd tools/client && npm i && node index.js

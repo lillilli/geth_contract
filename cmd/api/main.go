@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/lillilli/geth_contract/config"
 	"github.com/lillilli/geth_contract/eth"
@@ -13,12 +15,13 @@ import (
 	"github.com/lillilli/geth_contract/session"
 	"github.com/lillilli/logger"
 	"github.com/lillilli/vconf"
-	"github.com/robfig/cron"
 )
 
 var (
 	configFile = flag.String("config", "", "set service config file")
 )
+
+const updateTxsStateInterval = 10 * time.Second
 
 func main() {
 	flag.Parse()
@@ -40,21 +43,19 @@ func main() {
 }
 
 func runService(cfg *config.Config, log logger.Logger) error {
-	cronInstance := cron.New()
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 
-	cronInstance.Start()
-	defer cronInstance.Stop()
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	contractClient, err := eth.NewContractClient(cfg.PrivateKey, cfg.EthNodeURL, cfg.ContractAddress)
 	if err != nil {
 		return err
 	}
 
-	if err := startUpdateTxsState(cronInstance, log, contractClient); err != nil {
-		return err
-	}
+	go startUpdateTxsState(ctx, log, contractClient)
 
 	userSessionsStore := session.NewUserSessionStore()
 	httpServer := http.NewServer(cfg.HTTP, contractClient, userSessionsStore)
@@ -69,14 +70,21 @@ func runService(cfg *config.Config, log logger.Logger) error {
 	return httpServer.Stop()
 }
 
-func startUpdateTxsState(cronInstance *cron.Cron, log logger.Logger, contractClient eth.ContractClient) error {
+func startUpdateTxsState(ctx context.Context, log logger.Logger, contractClient eth.ContractClient) {
+	ticker := time.NewTicker(updateTxsStateInterval)
+
 	if err := contractClient.UpdateTxsStates(); err != nil {
 		log.Errorf("Updating txs states failed: %v", err)
 	}
 
-	return cronInstance.AddFunc("*/10 * * * * *", func() {
-		if err := contractClient.UpdateTxsStates(); err != nil {
-			log.Errorf("Updating txs states failed: %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := contractClient.UpdateTxsStates(); err != nil {
+				log.Errorf("Updating txs states failed: %v", err)
+			}
 		}
-	})
+	}
 }

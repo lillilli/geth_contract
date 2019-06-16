@@ -1,0 +1,14 @@
+idea
+.idea
+.vscode
+
+contract/build
+contract/*.go
+tools/client/node_modules
+
+vendor
+
+local.yml
+
+cmd/api/api
+cmd/deploy

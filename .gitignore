@@ -1,0 +1,15 @@
+.netrc
+.idea/
+.vscode/
+
+contract/build/
+contract/*.go
+tools/client/node_modules/
+
+vendor/
+
+local.yml
+prod.yml
+
+cmd/api/api
+cmd/deploy

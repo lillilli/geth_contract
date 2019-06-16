@@ -1,0 +1,6 @@
+Log:
+  MinLevel: DEBUG
+
+PrivateKey: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+ContractAddress: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+EthNodeURL: https://ropsten.infura.io

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -36,11 +37,13 @@ type contractClient struct {
 	publicKeyECDSA *ecdsa.PublicKey
 	privateKey     *ecdsa.PrivateKey
 
+	nonce   uint64
 	txCache TxCache
+	sync.Mutex
 }
 
 // NewContractClient - returns new contract client instance
-func NewContractClient(privateKeyHash string, nodeURL string, contractAddress string) (ContractClient, error) {
+func NewContractClient(privateKeyHash string, nodeURL string, contractAddressHex string) (ContractClient, error) {
 	client, err := ethclient.Dial(nodeURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "open dial connection to node failed")
@@ -56,9 +59,15 @@ func NewContractClient(privateKeyHash string, nodeURL string, contractAddress st
 		return nil, errors.New("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
 	}
 
-	address := common.HexToAddress(contractAddress)
+	contractAddress := common.HexToAddress(contractAddressHex)
+	accountAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
 
-	instance, err := store.NewStore(address, client)
+	nonce, err := client.PendingNonceAt(context.Background(), accountAddress)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting account nonce failed")
+	}
+
+	instance, err := store.NewStore(contractAddress, client)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating contract client failed")
 	}
@@ -69,6 +78,7 @@ func NewContractClient(privateKeyHash string, nodeURL string, contractAddress st
 		nodeURL:        nodeURL,
 		privateKey:     privateKey,
 		publicKeyECDSA: publicKeyECDSA,
+		nonce:          nonce,
 		txCache:        NewTxCache(client),
 	}, nil
 }
@@ -134,23 +144,21 @@ func (c *contractClient) Decrement() (Tx, error) {
 }
 
 func (c *contractClient) counterReqData() (*bind.TransactOpts, error) {
-	fromAddress := crypto.PubkeyToAddress(*c.publicKeyECDSA)
-
-	nonce, err := c.client.PendingNonceAt(context.Background(), fromAddress)
-	if err != nil {
-		return nil, err
-	}
-
 	gasPrice, err := c.client.SuggestGasPrice(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
+	c.Lock()
+	nonce := c.nonce
+	c.nonce++
+	c.Unlock()
+
 	data := bind.NewKeyedTransactor(c.privateKey)
 	data.Nonce = big.NewInt(int64(nonce))
 	data.Value = big.NewInt(0) // in wei
 	data.GasLimit = GasLimit   // in units
-	data.GasPrice = gasPrice
+	data.GasPrice = gasPrice.Add(gasPrice, gasPrice)
 
 	return data, nil
 }
